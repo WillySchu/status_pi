@@ -47,15 +47,25 @@ SERVICE_PROPS = [
 # ---------------------------------------------------------------- helpers
 
 def run(cmd):
-    """Run a command and return its stdout, or '' if it fails or is missing."""
+    """Run a command. Return (stdout, problem), where problem is '' or why it failed."""
     try:
         result = subprocess.run(
-            cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+            cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
             universal_newlines=True, timeout=5, env=dict(os.environ, LC_ALL="C"),
         )
-        return result.stdout
-    except (OSError, subprocess.SubprocessError):
-        return ""
+    except FileNotFoundError:
+        return "", "%s is not installed or not on PATH" % cmd[0]
+    except subprocess.TimeoutExpired:
+        return "", "%s did not respond within 5 s" % cmd[0]
+    except (OSError, subprocess.SubprocessError) as err:
+        return "", "%s: %s" % (cmd[0], err)
+
+    problem = ""
+    if result.returncode != 0 or not result.stdout.strip():
+        lines = result.stderr.strip().splitlines()
+        reason = lines[0] if lines else "exit status %d, no output" % result.returncode
+        problem = ("%s: %s" % (cmd[0], reason))[:200]
+    return result.stdout, problem
 
 
 def read_file(path):
@@ -81,8 +91,9 @@ def monotonic_to_epoch(usec):
 # ---------------------------------------------------------------- systemd
 
 def systemctl_show(unit, props):
-    out = run(["systemctl", "show", unit, "--property=" + ",".join(props)])
-    return dict(line.split("=", 1) for line in out.splitlines() if "=" in line)
+    """Return (properties, problem) for a unit; properties is {} if systemd could not be asked."""
+    out, problem = run(["systemctl", "show", unit, "--property=" + ",".join(props)])
+    return dict(line.split("=", 1) for line in out.splitlines() if "=" in line), problem
 
 
 def bus_path(unit):
@@ -100,7 +111,7 @@ def timer_times(unit):
     Read over D-Bus because it gives raw numbers on every systemd version,
     where `systemctl show` gives locale- and version-dependent date strings.
     """
-    out = run([
+    out, _ = run([
         "busctl", "get-property", "org.freedesktop.systemd1", bus_path(unit),
         "org.freedesktop.systemd1.Timer",
         "LastTriggerUSec", "NextElapseUSecRealtime", "NextElapseUSecMonotonic",
@@ -148,7 +159,7 @@ def service_status(props):
 
 def timer_status(name, props):
     service = props.get("Unit") or name[: -len(".timer")] + ".service"
-    svc = systemctl_show(service, SERVICE_PROPS)
+    svc, _ = systemctl_show(service, SERVICE_PROPS)
     last_trigger, next_run = timer_times(name)
 
     finished = monotonic_to_epoch(svc.get("ExecMainExitTimestampMonotonic"))
@@ -169,10 +180,10 @@ def timer_status(name, props):
 
 
 def unit_status(name):
-    props = systemctl_show(name, UNIT_PROPS)
+    props, problem = systemctl_show(name, UNIT_PROPS)
     if not props:
         return {"name": name, "kind": "unknown", "state": "unknown", "ok": False,
-                "error": "could not ask systemd"}
+                "error": problem or "systemctl returned nothing"}
     if props.get("LoadState") != "loaded":
         return {"name": name, "kind": "unknown", "state": props.get("LoadState", "unknown"),
                 "ok": False, "error": "no unit with this name"}
@@ -180,7 +191,7 @@ def unit_status(name):
     if name.endswith(".timer"):
         info = timer_status(name, props)
     elif name.endswith(".service"):
-        info = service_status(systemctl_show(name, SERVICE_PROPS))
+        info = service_status(systemctl_show(name, SERVICE_PROPS)[0])
     else:
         info = {"kind": "other", "state": props.get("ActiveState", "unknown"),
                 "sub": props.get("SubState", ""), "ok": props.get("ActiveState") == "active"}
