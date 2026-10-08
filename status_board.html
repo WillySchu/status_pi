@@ -13,6 +13,13 @@
   Each of those Pis must be running pi_status_agent.py (port 8787 unless you
   add :port to an address). Tap the screen to acknowledge a flashing alert.
 
+  To add the network bar (internet, router, devices online), also give the
+  address of an agent started with --network, normally the one on this Pi:
+
+      status_board.html?hosts=192.168.1.10,192.168.1.11&net=127.0.0.1
+
+  Tap the devices cell to list what is online.
+
   The typeface is B612 (c) The B612 Project Authors, SIL Open Font License 1.1,
   embedded below so the board never depends on the internet being up.
 -->
@@ -42,6 +49,9 @@
   /* Sized so the layout fills an 800x480 panel; scales with the screen. */
   font-size: min(2.5vw, 4.2vh);
 }
+@media (orientation: landscape) {
+  :root.has-netbar { font-size: min(2.375vw, 3.96vh); }  /* one more row to fit */
+}
 @media (orientation: portrait) {
   :root { font-size: min(3.6vw, 2.4vh); }
 }
@@ -52,7 +62,7 @@ html, body { height: 100%; margin: 0; }
 
 body {
   display: grid;
-  grid-template-rows: auto 1fr;
+  grid-template-rows: auto 1fr auto;
   overflow: hidden;
   background: var(--board);
   color: var(--silk);
@@ -70,7 +80,7 @@ body {
   align-items: baseline;
   justify-content: space-between;
   gap: 1.2rem;
-  padding: 0.85rem 1.2rem 0.9rem;
+  padding: 0.7rem 1.2rem 0.75rem;
   background: var(--board-deep);
   border-bottom: 2px solid var(--trace);
 }
@@ -103,8 +113,8 @@ body {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr));
   align-content: start;
-  gap: 1rem;
-  padding: 1rem 1.2rem 1.2rem;
+  gap: 0.8rem;
+  padding: 0.8rem 1.2rem;
   overflow: auto;
 }
 @media (orientation: portrait) {
@@ -123,7 +133,7 @@ body {
   align-items: baseline;
   justify-content: space-between;
   gap: 0 1rem;
-  padding: 0.7rem 1rem 0.6rem;
+  padding: 0.6rem 1rem 0.5rem;
 }
 .panel-name {
   margin: 0;
@@ -141,7 +151,7 @@ body {
   align-items: baseline;
   justify-content: space-between;
   gap: 0 1rem;
-  padding: 0.5rem 1rem;
+  padding: 0.42rem 1rem;
   border-top: 1px solid var(--trace);
 }
 .check-name { overflow-wrap: anywhere; }
@@ -180,6 +190,80 @@ body {
 .panel.is-silent .checks,
 .panel.is-silent .vitals { opacity: 0.4; }
 
+/* Network bar: the same lit-tile rules as the panels, laid out as one row. */
+.netbar {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  margin: 0 1.2rem 0.8rem;
+  border: 2px solid var(--trace);
+}
+.netbar[hidden] { display: none; }
+.netcell {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0 0.8rem;
+  min-width: 0;
+  padding: 0.45rem 0.9rem;
+}
+.netcell + .netcell { border-left: 1px solid var(--trace); }
+.netcell-label { font-size: 0.9rem; color: var(--silk-dim); }
+.netcell-value { margin-left: auto; text-align: right; }
+.netcell.is-fault { background: var(--fault); color: var(--ink); }
+.netcell.is-fault .netcell-label { color: inherit; }
+.netcell.is-button .netcell-value::after {   /* chevron: this cell opens something */
+  content: "";
+  display: inline-block;
+  width: 0.5em;
+  height: 0.5em;
+  margin-left: 0.55em;
+  border-top: 2px solid var(--pad);
+  border-right: 2px solid var(--pad);
+  transform: translateY(-0.1em) rotate(45deg);
+}
+
+/* Device list: covers the board until tapped. */
+.sheet {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  display: grid;
+  grid-template-rows: auto 1fr;
+  background: var(--board);
+}
+.sheet[hidden] { display: none; }
+.sheet-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1.2rem;
+  padding: 0.7rem 1.2rem 0.75rem;
+  background: var(--board-deep);
+  border-bottom: 2px solid var(--trace);
+}
+.sheet-title { margin: 0; font-size: 1.7rem; font-weight: 700; line-height: 1.15; }
+.sheet-close { flex: none; color: var(--silk-dim); }
+.sheet-body { overflow: auto; padding: 0.5rem 1.2rem 1rem; }
+.device-list { list-style: none; margin: 0; padding: 0; columns: 2; column-gap: 1.8rem; }
+@media (orientation: portrait) {
+  .device-list { columns: 1; }
+}
+.device {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.8rem;
+  padding: 0.32rem 0;
+  border-bottom: 1px solid var(--trace);
+  break-inside: avoid;
+  font-size: 0.9rem;
+}
+.device-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.device-name.is-unnamed { color: var(--silk-dim); }
+.device-ip { flex: none; color: var(--silk-dim); }
+
 .panel-hint { margin: 0; padding: 0.2rem 1rem 0.9rem; line-height: 1.45; }
 
 .guide {
@@ -203,6 +287,15 @@ body {
   <time class="clock" id="clock"></time>
 </header>
 <main class="panels" id="panels"></main>
+<footer class="netbar" id="netbar" hidden></footer>
+
+<section class="sheet" id="sheet" hidden>
+  <header class="sheet-head">
+    <h2 class="sheet-title" id="sheet-title"></h2>
+    <span class="sheet-close">tap to close</span>
+  </header>
+  <div class="sheet-body"><ul class="device-list" id="device-list"></ul></div>
+</section>
 
 <script>
 "use strict";
@@ -217,17 +310,22 @@ const TEMP_C = [70, 80];
 const DISK_PCT = [85, 95];
 const MEMORY_PCT = [90, 101];
 
-const hosts = (new URLSearchParams(location.search).get("hosts") || "")
-  .split(",").map(s => s.trim()).filter(Boolean)
-  .map(address => ({
-    address,
-    url: "http://" + (/:\d+$/.test(address) ? address : address + ":" + DEFAULT_PORT) + "/status",
-    data: null,          // last good answer
-    receivedAt: 0,       // performance.now() when it arrived
-    lastHeard: null,     // Date of the last good answer
-    failures: 0,
-    tried: false,
-  }));
+const SHEET_CLOSES_AFTER_MS = 60000;   // the device list puts itself away
+
+const makeHost = address => ({
+  address,
+  url: "http://" + (/:\d+$/.test(address) ? address : address + ":" + DEFAULT_PORT) + "/status",
+  data: null,          // last good answer
+  receivedAt: 0,       // performance.now() when it arrived
+  lastHeard: null,     // Date of the last good answer
+  failures: 0,
+  tried: false,
+});
+
+const params = new URLSearchParams(location.search);
+const hosts = (params.get("hosts") || "").split(",").map(s => s.trim()).filter(Boolean).map(makeHost);
+const netHost = (params.get("net") || "").trim() ? makeHost(params.get("net").trim()) : null;  // agent run with --network
+document.documentElement.classList.toggle("has-netbar", Boolean(netHost));
 
 const acknowledged = new Set();
 let currentFaults = [];
@@ -359,12 +457,69 @@ function panelHtml(view) {
     </section>`;
 }
 
+// The network agent gets a bar instead of a panel. Its own vitals and any
+// units or DNS checks it was given still raise alerts in the verdict strip.
+function networkView(host) {
+  const view = evaluate(host);
+  const out = { cells: [], alerts: [], devices: [] };
+  const cell = (label, value, level, action) => out.cells.push({ label, value, level, action });
+  const fault = text => out.alerts.push({ level: "fault", text });
+
+  if (view.silent) {
+    cell("network monitor", view.note, "fault");
+    fault("No answer from the network monitor");
+    return out;
+  }
+  const net = host.data && host.data.network;
+  if (!net || net.pending) {
+    cell("network", host.data && !net ? "agent was not started with --network" : "checking", "ok");
+    return out;
+  }
+  if (net.error) {
+    cell("network", net.error, "fault");
+    fault(net.error === "no network connection"
+      ? "The status board has no network connection" : "Network checks failed: " + net.error);
+    return out;
+  }
+
+  const now = host.data.time + (performance.now() - host.receivedAt) / 1000;
+  // Root cause first: with the router gone, the internet check fails too.
+  if (!net.router.ok) fault("The router is not answering");
+  if (!net.internet.ok) fault("The internet is down");
+  out.alerts.push(...view.alerts);
+
+  if (net.internet.ok) cell("internet", net.internet.ms + " ms", "ok");
+  else cell("internet", "down " + duration(now - net.internet.since), "fault");
+  if (net.router.ok) cell("router", "answering", "ok");
+  else cell("router", "down " + duration(now - net.router.since), "fault");
+  cell("devices", net.devices.length + " online", "ok", "devices");
+  out.devices = net.devices;
+  return out;
+}
+
+function renderNetwork(view) {
+  const bar = document.getElementById("netbar");
+  bar.hidden = false;
+  bar.innerHTML = view.cells.map(c => `
+    <div class="netcell is-${c.level}${c.action ? " is-button" : ""}"${c.action ? ` data-action="${c.action}"` : ""}>
+      <span class="netcell-label">${esc(c.label)}</span>
+      <span class="netcell-value">${esc(c.value)}</span>
+    </div>`).join("");
+
+  document.getElementById("sheet-title").textContent = plural(view.devices.length, "device") + " online";
+  document.getElementById("device-list").innerHTML = view.devices.map(d => `
+    <li class="device">
+      <span class="device-name${d.name ? "" : " is-unnamed"}">${esc(d.name || d.mac)}</span>
+      <span class="device-ip">${esc(d.ip)}</span>
+    </li>`).join("");
+}
+
 function render() {
   const verdict = document.getElementById("verdict");
   const verdictText = document.getElementById("verdict-text");
   const panels = document.getElementById("panels");
 
-  if (!hosts.length) {
+  if (!hosts.length && !netHost) {
     verdictText.textContent = "No Pis to watch yet";
     panels.innerHTML = `<p class="guide">Add the addresses of the Pis running pi_status_agent
       to the end of this page's address, separated by commas:
@@ -375,14 +530,17 @@ function render() {
   const views = hosts.map(evaluate);
   panels.innerHTML = views.map(panelHtml).join("");
 
-  const alerts = views.flatMap(v => v.alerts);
+  // Network problems lead the verdict: they are usually the cause of the others.
+  const network = netHost ? networkView(netHost) : null;
+  if (network) renderNetwork(network);
+  const alerts = (network ? network.alerts : []).concat(views.flatMap(v => v.alerts));
   const faults = alerts.filter(a => a.level === "fault");
   const worst = faults.length ? faults : alerts;
   let level = faults.length ? "fault" : alerts.length ? "caution" : "ok";
 
   if (worst.length) {
     verdictText.textContent = worst[0].text + (worst.length > 1 ? " and " + plural(worst.length - 1, "more problem") : "");
-  } else if (views.some(v => v.pending)) {
+  } else if (views.some(v => v.pending) || (netHost && !netHost.tried)) {
     verdictText.textContent = "Checking";
   } else {
     verdictText.textContent = "Everything is running";
@@ -425,12 +583,38 @@ async function poll(host) {
 }
 
 function pollAll() {
-  hosts.forEach(poll);
+  hosts.concat(netHost || []).forEach(poll);
 }
 
+// ------------------------------------------------------------ device list
+
+let sheetTimer = null;
+
+function closeSheet() {
+  clearTimeout(sheetTimer);
+  document.getElementById("sheet").hidden = true;
+}
+
+function keepSheetOpen() {
+  clearTimeout(sheetTimer);
+  sheetTimer = setTimeout(closeSheet, SHEET_CLOSES_AFTER_MS);
+}
+
+document.getElementById("netbar").addEventListener("click", event => {
+  if (event.target.closest("[data-action=devices]")) {
+    document.getElementById("sheet").hidden = false;
+    keepSheetOpen();
+  }
+});
+// A tap closes the list; dragging to scroll it does not count as a tap.
+document.getElementById("sheet").addEventListener("click", closeSheet);
+document.querySelector(".sheet-body").addEventListener("scroll", keepSheetOpen);
+
+// Acknowledge alerts on any touch. This only changes a class: rebuilding the
+// page between press and release would swallow the tap on whatever was pressed.
 document.addEventListener("pointerdown", () => {
   currentFaults.forEach(text => acknowledged.add(text));
-  render();
+  document.getElementById("verdict").classList.remove("is-unacknowledged");
 });
 
 tickClock();
